@@ -60,14 +60,6 @@ case-structure/
 7. Spec 06 — Airflow DAG
 8. Polimento final, README com screenshots, vídeo demo
 
-## Tempo Estimado
-
-- **Terça (hoje):** Esta estrutura + commit inicial
-- **Quarta:** Specs 07, 01, 02 (infra + streaming)
-- **Quinta:** Specs 03, 04, 05, 06 (dbt + Airflow)
-- **Sexta manhã:** Polimento, README final, vídeo demo
-- **Sexta tarde:** Envio até 15h
-
 ## Diferenciais vs. Caso Padrão
 
 Esses elementos são o que separa esta entrega da média:
