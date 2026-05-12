@@ -1,0 +1,203 @@
+name: nyc-taxi
+
+# Desvio da spec: Airflow usa build local (./airflow/Dockerfile) em vez de
+# _PIP_ADDITIONAL_REQUIREMENTS, para evitar instalação de ~500 MB em cada 'make up'.
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-81HqDtbqAywKSOumSha3BhWNOdQ26slT6K0YaZeZyPs=}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change-me-in-dev}
+    S3_ENDPOINT: http://minio:9000
+    S3_HOST_PORT: minio:9000
+    S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+    S3_SECRET_KEY: ${S3_SECRET_KEY:-CHANGE_ME}
+    S3_BUCKET: datalake
+    KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    KAFKA_TOPIC: taxi-rides
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./dbt:/opt/dbt
+
+services:
+  # ─── Streaming ────────────────────────────────────────────────────────────
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+    ports:
+      - "19092:19092"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redpanda
+
+  # ─── Storage ──────────────────────────────────────────────────────────────
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-CHANGE_ME}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minio} ${S3_SECRET_KEY:-CHANGE_ME};
+      mc mb -p local/datalake;
+      exit 0;
+      "
+    restart: "no"
+
+  # ─── Metadata DB ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Airflow ──────────────────────────────────────────────────────────────
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --role Admin \
+          --username admin \
+          --password admin \
+          --email admin@example.com \
+          --firstname Admin \
+          --lastname User || true
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ─── Pipeline Jobs (profile: jobs) ────────────────────────────────────────
+
+  producer:
+    build: ./producer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_TOPIC: taxi-rides
+      PRODUCER_BATCH_SIZE: "1000"
+      PRODUCER_RATE_LIMIT_PER_SEC: "5000"
+      PRODUCER_MAX_EVENTS: "0"
+    volumes:
+      - ./data:/data
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    profiles: ["jobs"]
+
+  consumer:
+    build: ./consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      KAFKA_TOPIC: taxi-rides
+      KAFKA_GROUP_ID: taxi-consumer
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-CHANGE_ME}
+      S3_BUCKET: datalake
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    profiles: ["jobs"]
+
+  dbt:
+    build: ./dbt
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_HOST_PORT: minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-CHANGE_ME}
+      S3_BUCKET: datalake
+    volumes:
+      - ./dbt:/opt/dbt
+    working_dir: /opt/dbt
+    depends_on:
+      minio:
+        condition: service_healthy
+    profiles: ["jobs"]
+
+volumes:
+  redpanda-data:
+  minio-data:
+  postgres-data:
