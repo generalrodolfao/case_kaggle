@@ -1,4 +1,4 @@
-import type { Filters, HourStat, Prediction, RideEvent, ZoneStat } from "./types";
+import type { DowStat, Filters, HourStat, MonthStat, OverviewStat, Prediction, RideEvent, ZoneStat } from "./types";
 
 const BASE = "/api";
 
@@ -28,6 +28,24 @@ export async function fetchStatsByZone(): Promise<ZoneStat[]> {
 export async function fetchStatsByHour(): Promise<HourStat[]> {
   const r = await fetch(`${BASE}/stats/by_hour`);
   if (!r.ok) throw new Error(`stats/by_hour: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchStatsOverview(): Promise<OverviewStat> {
+  const r = await fetch(`${BASE}/stats/overview`);
+  if (!r.ok) throw new Error(`stats/overview: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchStatsByMonth(): Promise<MonthStat[]> {
+  const r = await fetch(`${BASE}/stats/by_month`);
+  if (!r.ok) throw new Error(`stats/by_month: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchStatsByDow(): Promise<DowStat[]> {
+  const r = await fetch(`${BASE}/stats/by_dow`);
+  if (!r.ok) throw new Error(`stats/by_dow: ${r.status}`);
   return r.json();
 }
 

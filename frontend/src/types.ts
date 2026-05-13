@@ -40,6 +40,43 @@ export interface Prediction {
   abs_error: number;
 }
 
+export interface OverviewStat {
+  total_rides: number;
+  avg_fare: number;
+  median_fare: number;
+  total_revenue: number;
+  avg_distance_km: number;
+  fare_per_km: number;
+  avg_passenger_count: number;
+  airport_trips_pct: number;
+  rush_hour_pct: number;
+  night_shift_pct: number;
+  weekend_pct: number;
+}
+
+export interface MonthStat {
+  pickup_year: number;
+  pickup_month: number;
+  total_rides: number;
+  avg_fare: number;
+  total_revenue: number;
+  avg_distance_km: number;
+  airport_trips: number;
+  weekend_trips: number;
+  night_shift_trips: number;
+}
+
+export interface DowStat {
+  pickup_dow: number;
+  total_rides: number;
+  avg_fare: number;
+  total_revenue: number;
+  avg_distance_km: number;
+  airport_trips: number;
+  rush_hour_trips: number;
+  night_shift_trips: number;
+}
+
 export interface Filters {
   startDate: string;
   endDate: string;

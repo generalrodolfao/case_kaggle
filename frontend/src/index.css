@@ -351,7 +351,24 @@ select {
 .grid { display: grid; gap: 14px; }
 .g-2  { grid-template-columns: 1fr 1fr; }
 .g-3  { grid-template-columns: 1fr 1fr 1fr; }
+.g-4  { grid-template-columns: repeat(4, 1fr); }
 .row-gap { margin-top: 14px; }
+
+/* ── KPI Cards ── */
+.kpi-card { padding: 14px 16px; }
+.kpi-value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--taxi-yellow);
+  line-height: 1.1;
+  margin: 4px 0 2px;
+}
+.kpi-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--taxi-grey-text);
+}
 
 /* ── Table ── */
 .table-wrapper {
