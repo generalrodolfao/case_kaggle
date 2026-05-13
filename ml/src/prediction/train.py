@@ -39,11 +39,16 @@ def load_silver(cfg: PredictionConfig) -> pd.DataFrame:
         SET s3_use_ssl=false;
         SET s3_url_style='path';
     """)
-    cols = ", ".join(FEATURE_COLS + [TARGET_COL, "pickup_zone"])
+    # pickup_zone_enc is computed by build_Xy; only raw columns exist in silver
+    cols = ", ".join(NUMERIC_FEATURES + [TARGET_COL, "pickup_zone"])
+    # WHERE must wrap the USING SAMPLE subquery — DuckDB parser rejects
+    # "USING SAMPLE … WHERE" in the same SELECT level.
     df = con.execute(f"""
         SELECT {cols}
-        FROM read_parquet('{_s3_base_url(cfg)}')
-        USING SAMPLE {cfg.train_sample_rows} ROWS
+        FROM (
+            SELECT * FROM read_parquet('{_s3_base_url(cfg)}')
+            USING SAMPLE {cfg.train_sample_rows} ROWS
+        )
         WHERE {TARGET_COL} IS NOT NULL
           AND trip_distance_km IS NOT NULL
     """).df()
