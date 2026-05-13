@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>TAXI INTELLIGENCE — NYC Fare Predictor</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>
+
+<link rel="stylesheet" href="taxi.css" />
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar" data-screen-label="sidebar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+        <rect x="0" y="0" width="32" height="32" rx="4" fill="#F7B731"/>
+        <text x="16" y="22" text-anchor="middle" font-family="Barlow Condensed, sans-serif" font-weight="800" font-size="18" fill="#0F0F0F">TX</text>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <div class="brand-title">TAXI<br/>INTELLIGENCE</div>
+      <div class="brand-sub">NYC · FARE PREDICTOR</div>
+    </div>
+  </div>
+  <div class="checker"></div>
+
+  <nav class="nav" id="nav"></nav>
+
+  <div class="sidebar-foot">
+    <div class="meter-dot"></div>
+    <div>
+      <div class="foot-title">METER ONLINE</div>
+      <div class="foot-sub">MODEL · XGBOOST v3.2</div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN ============ -->
+<main class="main">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="crumb">
+      <span class="crumb-id">FLEET · DISPATCH</span>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-cur" id="crumbCurrent">OVERVIEW</span>
+    </div>
+    <div class="topbar-meta">
+      <div class="meta-block">
+        <div class="meta-label">DATASET</div>
+        <div class="meta-val">2009 — 2015</div>
+      </div>
+      <div class="meta-block">
+        <div class="meta-label">ROWS</div>
+        <div class="meta-val mono" id="rowsSelected">1,247,893</div>
+        <div class="meta-sub">of 55,423,856</div>
+      </div>
+      <div class="meta-block">
+        <div class="meta-label">RMSE</div>
+        <div class="meta-val mono accent">$3.27</div>
+      </div>
+      <div class="status-pill">
+        <span class="dot"></span> LIVE
+      </div>
+    </div>
+  </header>
+
+  <!-- FILTER BAR -->
+  <section class="filterbar" id="filterbar">
+    <div class="fb-row">
+      <div class="filter">
+        <label>PERIOD</label>
+        <div class="filter-inputs">
+          <input type="date" id="fDateFrom" value="2014-01-01" min="2009-01-01" max="2015-06-30"/>
+          <span class="dash">→</span>
+          <input type="date" id="fDateTo" value="2014-12-31" min="2009-01-01" max="2015-06-30"/>
+        </div>
+      </div>
+
+      <div class="filter">
+        <label>HOUR OF DAY <span class="lbl-val mono" id="fHourVal">0—23</span></label>
+        <div class="rangewrap">
+          <div class="range-track">
+            <div class="range-fill" id="hourFill"></div>
+          </div>
+          <input type="range" min="0" max="23" value="0" id="fHourMin" class="rng rng-lo"/>
+          <input type="range" min="0" max="23" value="23" id="fHourMax" class="rng rng-hi"/>
+        </div>
+      </div>
+
+      <div class="filter">
+        <label>FARE RANGE <span class="lbl-val mono" id="fFareVal">$0—$200</span></label>
+        <div class="rangewrap">
+          <div class="range-track"><div class="range-fill" id="fareFill"></div></div>
+          <input type="range" min="0" max="200" value="0" id="fFareMin" class="rng rng-lo"/>
+          <input type="range" min="0" max="200" value="200" id="fFareMax" class="rng rng-hi"/>
+        </div>
+      </div>
+
+      <div class="filter">
+        <label>DISTANCE <span class="lbl-val mono" id="fDistVal">0—50 km</span></label>
+        <div class="rangewrap">
+          <div class="range-track"><div class="range-fill" id="distFill"></div></div>
+          <input type="range" min="0" max="50" value="0" id="fDistMin" class="rng rng-lo"/>
+          <input type="range" min="0" max="50" value="50" id="fDistMax" class="rng rng-hi"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="fb-row">
+      <div class="filter chips-filter">
+        <label>DAY OF WEEK</label>
+        <div class="chips" id="fDow"></div>
+      </div>
+
+      <div class="filter chips-filter">
+        <label>PAX</label>
+        <div class="chips" id="fPax"></div>
+      </div>
+
+      <div class="filter">
+        <label>PICKUP ZONE</label>
+        <select id="fPickup" class="sel">
+          <option value="ALL">All boroughs</option>
+          <option>Manhattan</option><option>Brooklyn</option><option>Queens</option>
+          <option>Bronx</option><option>Staten Island</option>
+          <option>JFK</option><option>LGA</option><option>EWR</option>
+        </select>
+      </div>
+
+      <div class="filter">
+        <label>DROPOFF ZONE</label>
+        <select id="fDropoff" class="sel">
+          <option value="ALL">All boroughs</option>
+          <option>Manhattan</option><option>Brooklyn</option><option>Queens</option>
+          <option>Bronx</option><option>Staten Island</option>
+          <option>JFK</option><option>LGA</option><option>EWR</option>
+        </select>
+      </div>
+
+      <div class="filter chips-filter">
+        <label>WEATHER</label>
+        <div class="chips" id="fWx"></div>
+      </div>
+
+      <div class="filter chips-filter">
+        <label>TRIP TYPE</label>
+        <div class="chips" id="fTrip"></div>
+      </div>
+
+      <div class="fb-actions">
+        <button class="btn btn-ghost" id="btnClear">CLEAR</button>
+        <button class="btn btn-ghost" id="btnExport">EXPORT CSV</button>
+        <button class="btn btn-fill" id="btnApply">APPLY</button>
+      </div>
+    </div>
+
+    <div class="fb-foot">
+      <span class="pin">📍</span>
+      <span class="mono" id="countText">1,247,893</span> rides selected of <span class="mono">55,423,856</span> &nbsp;·&nbsp;
+      <span class="muted">filters applied:</span> <span id="activeFilterList" class="mono">period · hour</span>
+    </div>
+  </section>
+
+  <!-- SCREEN CONTAINER -->
+  <section class="screens" id="screens"></section>
+
+  <footer class="botbar">
+    <span class="mono">v3.2.0</span> · <span>NYC TLC · 2009–2015</span> · <span class="mono">XGBoost RMSE $3.27</span>
+    <span class="botbar-right mono" id="clock">--:--:--</span>
+  </footer>
+
+</main>
+
+<!-- Tooltip layer -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- ============ Scripts ============ -->
+<script src="taxi-data.js"></script>
+<script src="taxi-screens.js"></script>
+<script src="taxi-boot.js"></script>
+
+</body>
+</html>

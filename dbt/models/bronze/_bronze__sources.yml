@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Parquet brutos gravados pelo consumer no MinIO (camada raw)."
+    meta:
+      layer: raw
+    tables:
+      - name: taxi_rides_raw
+        description: "Eventos de corridas de táxi NYC vindos do Kafka, particionados por ingestion_date."
+        external:
+          location: "s3://datalake/raw/"
+          file_format: parquet
+          hive_partitioning: true
+        columns:
+          - name: key
+            description: "Chave única do evento (pickup_datetime + sufixo)."
+          - name: pickup_datetime
+            description: "Data/hora do início da corrida (string ISO-8601)."
+          - name: pickup_longitude
+            description: "Longitude do ponto de embarque."
+          - name: pickup_latitude
+            description: "Latitude do ponto de embarque."
+          - name: dropoff_longitude
+            description: "Longitude do ponto de desembarque."
+          - name: dropoff_latitude
+            description: "Latitude do ponto de desembarque."
+          - name: passenger_count
+            description: "Número de passageiros."
+          - name: fare_amount
+            description: "Valor da corrida em USD."
+          - name: event_ts
+            description: "Timestamp de publicação no Kafka (UTC)."
+          - name: ingestion_date
+            description: "Partição Hive: data de ingestão."

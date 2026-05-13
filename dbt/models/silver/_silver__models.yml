@@ -1,0 +1,106 @@
+version: 2
+
+models:
+  - name: silver_taxi_rides
+    description: >
+      Camada silver: todas as regras de qualidade aplicadas (fare_amount, passenger_count,
+      coordenadas, Null Island, range temporal). Enriquecida com distâncias e zona de embarque.
+    meta:
+      layer: silver
+    columns:
+      - name: key
+        description: >
+          Chave da corrida. Pode conter duplicatas em ambiente de teste quando o tópico Kafka
+          acumula múltiplos runs de producer sem limpeza de offset. Em produção, o tópico
+          seria purgado ou o consumer group reiniciado entre runs.
+        tests:
+          - unique:
+              config:
+                severity: warn
+          - not_null
+      - name: fare_amount
+        description: "Valor da corrida em USD (> 0 e <= 500)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 500
+                inclusive: true
+      - name: passenger_count
+        description: "Passageiros (1–6 após filtro de qualidade)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6]
+      - name: pickup_zone
+        description: "Zona de embarque derivada das coordenadas."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [jfk, lga, ewr, manhattan, brooklyn, other]
+      - name: pickup_hour
+        description: "Hora do embarque (0–23)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 23
+      - name: pickup_dow
+        description: "Dia da semana do embarque (0=domingo, 6=sábado)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 6
+      - name: trip_distance_km
+        description: "Distância Haversine em km entre embarque e desembarque."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 200
+      - name: trip_distance_manhattan_km
+        description: "Distância Manhattan em km (|Δlat| + |Δlon|) × 111.32."
+        tests:
+          - not_null
+      - name: pickup_datetime
+        description: "Timestamp de início da corrida."
+        tests:
+          - not_null
+      - name: dropoff_zone
+        description: "Zona de desembarque derivada das coordenadas."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [jfk, lga, ewr, manhattan, brooklyn, other]
+      - name: is_weekend
+        description: "TRUE se pickup_dow IN (0=dom, 6=sab)."
+        tests:
+          - not_null
+      - name: is_rush_hour
+        description: "TRUE se pickup_hour IN (7,8,9,17,18,19)."
+        tests:
+          - not_null
+      - name: is_night_shift
+        description: "TRUE se pickup_hour >= 22 OR pickup_hour < 5."
+        tests:
+          - not_null
+      - name: is_airport_trip
+        description: "TRUE se pickup ou dropoff a menos de 2km de JFK, LGA ou EWR."
+        tests:
+          - not_null
+      - name: bearing_degrees
+        description: "Azimute da corrida em graus (0–360°)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 360

@@ -14,3 +14,4 @@ taxi_pipeline:
         s3_secret_access_key: "{{ env_var('S3_SECRET_KEY', 'CHANGE_ME') }}"
         s3_url_style: "path"
         s3_use_ssl: "false"
+        memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '4GB') }}"

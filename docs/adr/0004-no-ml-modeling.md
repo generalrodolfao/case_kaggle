@@ -42,7 +42,34 @@ Nenhum item menciona modelo, predição, RMSE ou ML.
 - **Modelo + serving:** Iria muito além do escopo, multiplica complexidade.
 - **Notebook exploratório anexo:** Adiciona ruído sem agregar valor à avaliação de engenharia.
 
+## Emenda — 2026-05-13
+
+**Status da emenda:** Aceito
+
+A decisão original foi **parcialmente revertida** por solicitação explícita.
+
+### O que mudou
+
+Foi adicionada uma DAG separada `prediction_pipeline` (schedule `@weekly`, independente do `taxi_pipeline`) que:
+
+1. Lê a camada **silver** via DuckDB + httpfs (amostra de 5 M linhas)
+2. Treina um **XGBoost regressor** com features: `trip_distance_km`, `trip_distance_manhattan_km`, `pickup_hour`, `pickup_dow`, `pickup_month`, `passenger_count`, `pickup_zone` (label-encoded)
+3. Split 80/20, avalia RMSE / MAE / R²
+4. Persiste modelo em `s3://datalake/models/fare_predictor.pkl`
+5. Persiste predições em `s3://datalake/gold/fare_predictions.parquet`
+
+### O que NÃO mudou
+
+- O pipeline principal (`taxi_pipeline`) continua sem ML
+- Não há feature store, experiment tracking (MLflow), nem serving em tempo real
+- O case continua sendo avaliado por **engenharia**, não por RMSE
+
+### Módulo
+
+`ml/src/prediction/` — isolado do resto do pipeline, testado independentemente.
+
 ## Referências
 
 - Enunciado do case, seção de critérios de avaliação.
 - Lista de tópicos relevantes citados: "Testes unitários, Desenho de solução, Estrutura de código, Aplicação up and running" — nenhum sobre ML.
+- Emenda solicitada em 2026-05-13.

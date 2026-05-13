@@ -1,4 +1,4 @@
-.PHONY: up down demo test lint format logs clean
+.PHONY: up down demo dbt-run dbt-test test test-ml lint format logs clean frontend-dev
 
 up:
 	docker compose up -d --build
@@ -8,27 +8,65 @@ up:
 	@echo "  Redpanda Console: http://localhost:8080"
 	@echo "  MinIO Console:    http://localhost:9001  (minio / CHANGE_ME)"
 	@echo "  Airflow UI:       http://localhost:8081  (admin / admin)"
+	@echo "  API (FastAPI):    http://localhost:8000/docs"
+	@echo "  Dashboard:        http://localhost:3000"
 
 down:
 	docker compose down
 
 demo:
-	@echo "==> [1/3] Publicando 100k eventos no tópico taxi-rides..."
-	docker compose run --rm producer python -m producer.main --max-events 100000
+	@echo "==> [1/3] Publicando eventos no tópico taxi-rides (sample 10k)..."
+	PYTHONPATH=producer/src \
+	KAFKA_BOOTSTRAP_SERVERS=localhost:19092 \
+	DATA_PATH="data/train_sample.csv" \
+	python3.11 -m producer.main
 	@echo "==> [2/3] Consumindo eventos de jan/2014 (zona JFK)..."
-	docker compose run --rm consumer python -m consumer.main \
-		--start-date 2014-01-01 --end-date 2014-01-31 --zone jfk
-	@echo "==> [3/3] Disparando pipeline dbt via Airflow..."
+	PYTHONPATH=consumer/src \
+	KAFKA_BOOTSTRAP_SERVERS=localhost:19092 \
+	S3_ENDPOINT=http://localhost:9000 \
+	S3_ACCESS_KEY=minio \
+	S3_SECRET_KEY=CHANGE_ME \
+	S3_BUCKET=datalake \
+	python3.11 -m consumer.main \
+		--start-date 2014-01-01 --end-date 2014-01-31 --zone jfk --idle-exit-secs 30
+	@echo "==> [3/4] Disparando pipeline dbt via Airflow..."
 	docker compose exec airflow-scheduler airflow dags trigger taxi_pipeline
+	@echo "==> [4/4] Disparando pipeline de predição via Airflow..."
+	docker compose exec airflow-scheduler airflow dags trigger prediction_pipeline
 	@echo ""
-	@echo "Pipeline disparado. Acompanhe em http://localhost:8081"
+	@echo "Pipelines disparados. Acompanhe em http://localhost:8081"
+	@echo "Dashboard disponível em  http://localhost:3000"
+	@echo "API docs disponíveis em  http://localhost:8000/docs"
+
+dbt-run:
+	@echo "==> Rodando dbt no host (RAM ilimitada, recomendado para datasets grandes)"
+	cd dbt && \
+	S3_HOST_PORT=localhost:9000 \
+	S3_ACCESS_KEY=minio \
+	S3_SECRET_KEY=CHANGE_ME \
+	DUCKDB_MEMORY_LIMIT=$${DUCKDB_MEMORY_LIMIT:-10GB} \
+	dbt run --profiles-dir .
+
+dbt-test:
+	@echo "==> Rodando dbt test no host"
+	cd dbt && \
+	S3_HOST_PORT=localhost:9000 \
+	S3_ACCESS_KEY=minio \
+	S3_SECRET_KEY=CHANGE_ME \
+	DUCKDB_MEMORY_LIMIT=$${DUCKDB_MEMORY_LIMIT:-10GB} \
+	dbt test --profiles-dir .
 
 test:
-	pytest producer/tests consumer/tests -v \
-		--cov=producer --cov=consumer \
-		--cov-report=term-missing \
-		--cov-fail-under=80
-	cd dbt && dbt test
+	pytest producer/tests -v --cov=producer --cov-report=term-missing --cov-fail-under=80
+	pytest consumer/tests -v --cov=consumer --cov-report=term-missing --cov-fail-under=80
+	$(MAKE) test-ml
+	$(MAKE) dbt-test
+
+test-ml:
+	PYTHONPATH=ml/src pytest ml/tests -v --cov=prediction --cov-report=term-missing
+
+frontend-dev:
+	cd frontend && npm install && npm run dev
 
 lint:
 	ruff check .

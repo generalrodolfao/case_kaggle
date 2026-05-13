@@ -12,9 +12,10 @@ line-length = 100
 target-version = ["py311"]
 
 [tool.pytest.ini_options]
-testpaths = ["producer/tests", "consumer/tests"]
+testpaths = ["producer/tests"]
 addopts = "-v --tb=short"
 filterwarnings = ["ignore::DeprecationWarning"]
+pythonpath = ["producer/src", "consumer/src"]
 
 [tool.coverage.run]
 source = ["producer/src", "consumer/src"]

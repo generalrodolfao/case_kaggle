@@ -1,0 +1,236 @@
+version: 2
+
+models:
+  - name: gold_fares_by_hour
+    description: "Receita e volume agregados por hora do dia (0–23) em todo o período."
+    meta:
+      layer: gold
+    columns:
+      - name: pickup_hour
+        description: "Hora do embarque (0–23)."
+        tests:
+          - unique
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 23
+      - name: total_rides
+        description: "Total de corridas nessa hora."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+      - name: avg_fare
+        description: "Tarifa média em USD."
+        tests:
+          - not_null
+
+  - name: gold_fares_by_zone
+    description: "Receita e volume por zona de embarque."
+    meta:
+      layer: gold
+    columns:
+      - name: pickup_zone
+        description: "Zona de embarque."
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [jfk, lga, ewr, manhattan, brooklyn, other]
+      - name: total_rides
+        description: "Total de corridas dessa zona."
+        tests:
+          - not_null
+
+  - name: gold_fares_by_day_zone
+    description: "Cubo de data × zona — base para consultas customizadas por período."
+    meta:
+      layer: gold
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_date, pickup_zone]
+    columns:
+      - name: pickup_date
+        description: "Data de embarque."
+        tests:
+          - not_null
+      - name: pickup_zone
+        description: "Zona de embarque."
+        tests:
+          - not_null
+      - name: total_revenue
+        description: "Receita total do dia+zona."
+        tests:
+          - not_null
+
+  - name: gold_fares_hourly_heatmap
+    description: "Heatmap dow × hour — 168 células (7 dias × 24 horas)."
+    meta:
+      layer: gold
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_dow, pickup_hour]
+    columns:
+      - name: pickup_dow
+        description: "Dia da semana (0=domingo, 6=sábado)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 6
+      - name: pickup_hour
+        description: "Hora (0–23)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 23
+
+  # ── Metrics models ────────────────────────────────────────────────────────
+
+  - name: gold_metrics_overview
+    description: "KPIs globais: total_rides, avg/median/p99 fare, percentis, flags."
+    meta:
+      layer: gold
+    columns:
+      - name: total_rides
+        description: "Total de corridas no período."
+        tests:
+          - not_null
+      - name: avg_fare
+        description: "Tarifa média (USD)."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 500
+      - name: total_revenue
+        description: "Receita total (USD)."
+        tests:
+          - not_null
+
+  - name: gold_metrics_by_dow
+    description: "Corridas e tarifas agregadas por dia da semana (0=dom, 6=sab)."
+    meta:
+      layer: gold
+    columns:
+      - name: pickup_dow
+        description: "Dia da semana."
+        tests:
+          - unique
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 6
+      - name: total_rides
+        description: "Total de corridas nesse dia."
+        tests:
+          - not_null
+
+  - name: gold_metrics_by_month
+    description: "Análise mensal: heatmap ano × mês (7 anos × 12 meses)."
+    meta:
+      layer: gold
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_year, pickup_month]
+    columns:
+      - name: total_rides
+        description: "Total de corridas no mês."
+        tests:
+          - not_null
+
+  - name: gold_metrics_time_flags
+    description: "Breakdown por combinação de flags rush / night / weekend (máx 8 linhas)."
+    meta:
+      layer: gold
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [is_rush_hour, is_night_shift, is_weekend]
+    columns:
+      - name: total_rides
+        description: "Total de corridas nessa combinação de flags."
+        tests:
+          - not_null
+
+  - name: gold_metrics_od_matrix
+    description: "Matriz origem-destino (pickup_zone × dropoff_zone) — 36 pares máx."
+    meta:
+      layer: gold
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_zone, dropoff_zone]
+    columns:
+      - name: total_rides
+        description: "Corridas nesse par OD."
+        tests:
+          - not_null
+
+  - name: gold_metrics_fare_bins
+    description: "Histograma de fare_amount em bins de $5."
+    meta:
+      layer: gold
+    columns:
+      - name: fare_bin_start
+        description: "Início do bin de tarifa (USD)."
+        tests:
+          - unique
+          - not_null
+      - name: total_rides
+        description: "Corridas nesse bin."
+        tests:
+          - not_null
+
+  - name: gold_metrics_fare_by_passenger
+    description: "Box-plot de fare_amount por passenger_count (1–6 linhas)."
+    meta:
+      layer: gold
+    columns:
+      - name: passenger_count
+        description: "Número de passageiros."
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6]
+      - name: median_fare
+        description: "Mediana da tarifa para esse grupo."
+        tests:
+          - not_null
+
+  - name: gold_metrics_distance_bins
+    description: "$/km e trip_type por faixa de distância inteira (km)."
+    meta:
+      layer: gold
+    columns:
+      - name: distance_bin_km
+        description: "Início da faixa de distância (km, inteiro)."
+        tests:
+          - not_null
+      - name: total_rides
+        description: "Corridas nessa faixa."
+        tests:
+          - not_null
+
+  - name: gold_data_quality
+    description: "Auditoria de qualidade do silver: nulos, ranges, corridas suspeitas."
+    meta:
+      layer: gold
+    columns:
+      - name: total_rides_silver
+        description: "Total de corridas que passaram pelos filtros do silver."
+        tests:
+          - not_null

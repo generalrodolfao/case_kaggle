@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: bronze_taxi_rides
+    description: >
+      Camada bronze: tipagem com TRY_CAST, deduplicação por key (mantendo event_ts mais recente),
+      particionamento por pickup_year/pickup_month. Sem regras de negócio.
+    meta:
+      layer: bronze
+    columns:
+      - name: key
+        description: "Chave da corrida. Unique garantido pelo consumer (raw limpo por run)."
+        tests:
+          - not_null
+      - name: pickup_datetime
+        description: "Timestamp de início da corrida."
+        tests:
+          - not_null
+      - name: pickup_year
+        description: "Ano extraído de pickup_datetime — usado como coluna de partição."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2009
+                max_value: 2015
+      - name: pickup_month
+        description: "Mês extraído de pickup_datetime — usado como coluna de partição."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 12
+      - name: fare_amount
+        description: "Valor da corrida em USD (ainda pode conter negativos — limpeza é no silver)."
+      - name: passenger_count
+        description: "Número de passageiros (ainda pode conter 0 ou NULL de TRY_CAST — limpeza é no silver)."

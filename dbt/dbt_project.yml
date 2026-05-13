@@ -11,19 +11,30 @@ seed-paths: ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-target-path: "target"
+target-path: /tmp/dbt_target
+packages-install-path: "{{ env_var('DBT_PACKAGES_PATH', 'dbt_packages') }}"
 clean-targets:
   - "target"
   - "dbt_packages"
+
+on-run-start:
+  - "SET temp_directory = '/tmp/duckdb_tmp'"
+  - "SET preserve_insertion_order = false"
+  - "CREATE SCHEMA IF NOT EXISTS raw"
+  - >
+    CREATE OR REPLACE VIEW raw.taxi_rides_raw AS
+    SELECT key, pickup_datetime, pickup_longitude, pickup_latitude,
+           dropoff_longitude, dropoff_latitude, passenger_count, fare_amount, event_ts
+    FROM read_parquet('s3://datalake/raw/**/*.parquet')
+  - >
+    CREATE OR REPLACE VIEW main.bronze_taxi_rides AS
+    SELECT * FROM read_parquet('s3://datalake/bronze/taxi_rides/**/*.parquet')
 
 models:
   taxi_pipeline:
     bronze:
       +materialized: external
-      +format: parquet
     silver:
       +materialized: external
-      +format: parquet
     gold:
-      +materialized: table
-      +schema: gold
+      +materialized: external
