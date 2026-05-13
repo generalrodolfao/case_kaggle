@@ -16,3 +16,4 @@ SELECT
 FROM {{ ref('silver_taxi_rides') }}
 GROUP BY is_rush_hour, is_night_shift, is_weekend
 ORDER BY is_rush_hour, is_night_shift, is_weekend
+
